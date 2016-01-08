@@ -39,7 +39,7 @@ The required functionality of `Taker` and `Maker` objects is described in the su
 
 ## Maker
 
-Existing instances: `yield-generator-basic.py`, `yield-generator-mixdepth.py`, `yield-generator-deluxe.py`
+Existing instances: `yield-generator-basic.py`, `yield-generator-mixdepth.py`, `yield-generator-deluxe.py`, `patientsendpayment.py`
 
 A Joinmarket maker offers liquidity for coinjoins (hence the terminology, borrowed from financial exchanges - *liquidity maker*). At a high level, it offers this functionality:
 
@@ -79,7 +79,7 @@ When an unconfirmed transaction is seen on the network (as justified above), the
 
 ## Taker
 
-Existing instances: `sendpayment.py`, `tumbler.py`
+Existing instances: `sendpayment.py`, `tumbler.py`, `patientsendpayment.py`
 
 A joinmarket taker chooses a set of makers, based on examination of the orderbook, and initiates a coinjoin transaction, and broadcasts it to the network. It may choose to do this repeatedly. At a high level, its functionality looks like this:
 
