@@ -10,7 +10,17 @@ Over time, it is hoped that this will be greatly extended - in particular, via l
 
 * [Wallets](#wallets)
 
+ * [External and Internal Branches](#use-of-external-and-internal-branches)
+
+ * [Wallet generation and access control](#wallet-generation-and-access-control)
+
+ * [`wallet-tool.py`](#the-wallet-toolpy-script)
+
 * [Transactions](#transactions)
+
+ * [Core concepts](#core-concepts)
+
+ * [Joinmarket transaction types](#joinmarket-transaction-types)
 
 * [Entities](#entities)
 
@@ -26,6 +36,8 @@ Joinmarket wallets are of the [BIP32 Hierarchical Deterministic wallet](https://
     m/0/mixdepth/[external/internal]
 
 The value of mixdepth runs from 0..M-1, where M is the number of mixdepths chosen by the user; by default 5. The value of [external/internal] is 0 for external, 1 for internal. Thus a default wallet will contain 10 separate branches.
+
+Note that all of the keys are of the non-hardened type.
 
 Typical output from script `wallet-tool.py`, which enables basic wallet handling, running against a testnet wallet seed:
 
@@ -96,21 +108,24 @@ Typical output from script `wallet-tool.py`, which enables basic wallet handling
     for mixdepth=4 balance=2.00000000btc
     total balance = 49.22753643btc
 
+Balances displayed by [`wallet-tool.py`](#the-wallet-toolpy-script) **include unconfirmed amounts** by default. This (i.e. treating unconfirmed coins as available) is **not currently supported** when running [bot entities](#entities), based on the problematic nature of spending unconfirmed coins, but can be done by editing configuration. For details on the fine-grained control over what conis are considered available, see the advice in the default version of `joinmarket.cfg` that is held in the file `configure.py`.
+
+
 ## Use of external and internal branches.
 
 Payments into the wallet should be made into new addresses on the `external` branch for any mixdepth. For the above wallet, `muaApeqh9L4aQvR6Fn52oDiqz8jKKu9Rfz` (from mixdepth 2) or `mrgNjQWjrBDB821o1Q3qG6EmKJmEqgjtqY` (from mixdepth 4) would be suitable candidates. The index of the address on the branch is shown as the final 3 digit integer in the identifier. As usual with deterministic wallets, a configurable gap-limit variable is used to determine how far forwards to search after unused/new addresses are located.
 
 In a joinmarket [transaction](#transactions), outputs go to: (1) coinjoin outputs -> external addresses in the next mixdepth (where 'next' means (mixdepth+1 % M)), (2) change outputs -> internal addresses in the same mixdepth.
 
-The logic is fairly straightforward: the coinjoin outputs of a transaction must not be reused with any of the inputs to that same transaction, or any other output that can be connected with them, as this would allow fairly trivial linkage. By moving coinjoin outputs to an entirely separate branch, isolation is enforced.
+The logic of this is fairly straightforward, and central to how Joinmarket works, so make sure to understand it: **the coinjoin outputs of a transaction must not be reused with any of the inputs to that same transaction, or any other output that can be connected with them, as this would allow fairly trivial linkage**. By moving coinjoin outputs to an entirely separate branch, isolation is enforced.
 
 ## Wallet generation and access control
 
-The master private key is generated via a call to Python's `os.urandom`, being the interface to the underlying OS randomness source. It is a 32 byte random string.
+The master private key is generated via a call to Python's `os.urandom`, this being the interface to the underlying OS randomness source. It is a 32 byte random string (which is the advised seed length for BIP32).
 
 This seed is used to generate the wallet structure described above and according to the BIP32 specification.
 
-The recovery seedphrase is a 12 word phrase of the type used in earlier versions of Electrum, and using that code base, specifically see the functions `mn_encode` and mn_decode` in the module `old_mnemonic.py`, which uses a 1626 word list, also found in that file (note: 16**12 implies 128 bit security). A commonly asked question is whether and why not Joinmarket supports BIP39. For now, the answer to that question is that it isn't relevant; since JM's wallet uses this specific HD structure, designed to allow coinjoins to occur safely, it is not directly compatible with other wallets. This may change in the future, however.
+The recovery seedphrase is a 12 word phrase of the type used in earlier versions of Electrum, and using that code base, specifically see the functions `mn_encode` and `mn_decode` in the module `old_mnemonic.py`, which uses a 1626 word list, also found in that file (note: 1626<sup>12</sup> implies 128 bit security). A commonly asked question is whether and why not Joinmarket supports BIP39. For now, the answer to that question is that it isn't relevant; since JM's wallet uses this specific HD structure, designed to allow coinjoins to occur safely, it is not directly compatible with other wallets. This may change in the future, however.
 
 The wallet seed is encrypted for persistent storage using AES in CBC mode, using the module `slowaes.py`. Note that a bug was found earlier in this module's handling of PKCS7, which could have allowed 'decryption' to garbage, but this was [fixed](https://github.com/JoinMarket-Org/joinmarket/pull/191).
 
