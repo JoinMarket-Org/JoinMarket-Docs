@@ -325,6 +325,7 @@ with the last of the three being the default. The logic behind the default is de
 Once the set of orders has been chosen and the fees set (and the coinjoin amount, for sweeps), the process continues as described above for Takers, i.e. `Taker.start_cj` is called with the defined parameters. The remaining execution is handled by the `CoinJoinTX` object.
 
 **Pseudocode**
+
     function do_sendpayment(sweep):
      load wallet
      start msgchan
