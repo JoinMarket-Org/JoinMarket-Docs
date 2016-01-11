@@ -4,7 +4,7 @@
 
 This is a *high level* description of JoinMarket's design. The goal is to allow developers and other interested parties to either develop for or work with JoinMarket as a system. As an example, it might allow a developer to create a new implementation with an entirely different codebase.
 
-Over time, it is hoped that this will be greatly extended - in particular, via linking to sub-documents which give more details on the protocol, such as message formats etc. For example, there is already [this](https://github.com/Joinmarket-Org/joinmarket/wiki/Messaging-Protocol.md).
+Over time, it is hoped that this will be greatly extended - in particular, via linking to sub-documents which give more details on the protocol, such as message formats etc. For example, there is already [this](https://github.com/JoinMarket-Org/JoinMarket-Docs/blob/master/Joinmarket-messaging-protocol.md).
 
 **Table of Contents**
 
@@ -27,6 +27,20 @@ Over time, it is hoped that this will be greatly extended - in particular, via l
  * [Maker](#maker)
 
  * [Taker](#taker)
+
+   * [sendpayment](#the-sendpayment-script)
+
+    * [tumbler](#the-tumbler-script)
+
+* [Messaging Layer](#messaging-layer)
+
+ * [Encrypted messaging](#encrypted-messaging)
+
+* [Blockchain Interface](#blockchain-interface)
+
+* [Bitcoin Transaction Fees](#bitcoin-transaction-fees)
+
+* [The Configuration File](#the-configuration-file)
 
 
 # Wallets
@@ -121,13 +135,13 @@ The logic of this is fairly straightforward, and central to how Joinmarket works
 
 ## Wallet generation and access control
 
-The master private key is generated via a call to Python's `os.urandom`, this being the interface to the underlying OS randomness source. It is a 32 byte random string (which is the advised seed length for BIP32).
+The master private key is generated via a call to Python's `os.urandom`, this being the interface to the underlying OS randomness source. It is then passed through two rounds of SHA256. It is a 32 byte random string (which is the advised seed length for BIP32).
 
 This seed is used to generate the wallet structure described above and according to the BIP32 specification.
 
 The recovery seedphrase is a 12 word phrase of the type used in earlier versions of Electrum, and using that code base, specifically see the functions `mn_encode` and `mn_decode` in the module `old_mnemonic.py`, which uses a 1626 word list, also found in that file (note: 1626<sup>12</sup> implies 128 bit security). A commonly asked question is whether and why not Joinmarket supports BIP39. For now, the answer to that question is that it isn't relevant; since JM's wallet uses this specific HD structure, designed to allow coinjoins to occur safely, it is not directly compatible with other wallets. This may change in the future, however.
 
-The wallet seed is encrypted for persistent storage using AES in CBC mode, using the module `slowaes.py`. Note that a bug was found earlier in this module's handling of PKCS7, which could have allowed 'decryption' to garbage, but this was [fixed](https://github.com/JoinMarket-Org/joinmarket/pull/191).
+The wallet seed is encrypted for persistent storage using AES in CBC mode, using the module `slowaes.py`. Note that a bug was found earlier in this module's handling of PKCS7, which could have allowed 'decryption' with a wrong password (to garbage), but this was [fixed](https://github.com/JoinMarket-Org/joinmarket/pull/191).
 
 The wallet is persisted to disk in this format:
 
@@ -180,6 +194,8 @@ We can define 4 distinct joinmarket transaction types. We use the notation "JMTx
  This can be either a 'sink' or not, depending on the destination of the coinjoin output. A sweep is characterised by 2 things: (a) the initiator will not create a change output, and (b) the initiator will consume **all** of the utxos in the given mixdepth (both internal and external branches) as inputs, leaving no coins left in that mixdepth.
 
  ![alt text](/images/SweepJMTx.png)
+
+---
 
 # Entities
 
@@ -270,5 +286,130 @@ This plays a similar role to `CoinJoinOrder` for `Maker`. A taker only processes
 
 It is not uncommon for the makers to fail to respond at any stage of transaction negotiation. To handle this, the `CoinJoinTX` object contains a `TimeoutThread` which keeps track of how long we've been waiting for all of the makers specified for the transaction. If the timeout (specified in the configuration variable `maker_timeout_sec`) is exceeded, the function `CoinJoinTX.recover_from_nonrespondants()` is called, allowing the taker to restart the process from the beginning.
 
+Note that it is also possible to manually specify makers with which the taker does not want to join, by amending the `ignored_makers` list. This is not currently part of the configuration and is not expected to be needed, usually.
+
+### Taker implementations
+
+For each of these, please see the user instructions specified in the output of `python scriptname.py --help`.
+
+#### The sendpayment script
+
+This is designed to implement the simplest scenario for a `Taker` : it starts, does one coinjoin, then quits. The expected functionality is as follows.
+
+For the sequence of events, see the bullet point list in [Taker](#taker), bearing in mind that this is the only-one-coinjoin option.
+
+The syntax is:
+
+    python sendpayment.py [options] [wallet file] [amount] [destaddr]
+
+To carry out a *sweep* (see item 4 in [joinmarket transaction types](#joinmarket-transaction-types)), the field `amount` must be set to zero. For other transactions, the amount must be specified in satoshis.
+
+The `destaddr` is the address which will receive the coinjoin amount (the amount specified in `amount`). Note that specifying a non-p2pkh address (i.e. a p2sh address, usually for multisig - addresses starting with '3' on the main bitcoin network) is highly inadvisable, as it allows immediate linkage of that coinjoin output to the input and change address.
+
+The default mixdepth from which the spend will occur is mixdepth 0. Otherwise, the user must specify the mixdepth with the `-m` flag.
+
+The user also specifies the number of counterparties with which to join. Choosing -N 1 is not recommended since this allows the counterparty to know the taker's destination address. The default is 2, but numbers from 3-5 are probably most suitable. Larger figures suffer from larger transaction fees, as well as potential unreliability problems.
+
+Once the configuration has been set, the sendpayment script starts a `PaymentThread` thread object, which does the following:
+
+First, it extracts the list of available orders from its internal `self.db` object. Then, it estimates the bitcoin transaction fee (see the separate [section](#bitcoin-transaction-fees)).
+
+Next, the most important part of the code is the method of choosing which orders, read from the orderbook, are to be used for the construction of the join transaction. See the functions `sendpayment_choose_orders` in `sendpayment.py` and `choose_sweep_orders` in `support.py`. Within these functions, the ranking of orders is performed by one of three functions found in `support.py`:
+
+* pick_order
+* cheapest_order_choose
+* weighted_order_choose
+
+with the last of the three being the default. The logic behind the default is deferred to a separate [section](#weighted-orders-choose). Also note that `pick_order` cannot be used in conjunction with sweeping.
+
+Once the set of orders has been chosen and the fees set (and the coinjoin amount, for sweeps), the process continues as described above for Takers, i.e. `Taker.start_cj` is called with the defined parameters. The remaining execution is handled by the `CoinJoinTX` object.
+
+**Pseudocode**
+    function do_sendpayment(sweep):
+     load wallet
+     start msgchan
+     read orders from pit
+     set transaction fee estimate(sweep)
+     choose orders using chosen algo (sweep)
+     send !fill message to chosen counterparties and do encryption handshake
+     receive utxos
+     construct template transaction and send to all counterparties
+     receive signatures
+     broadcast transaction to bitcoin network
+     quit
+
+The parameter 'sweep' is used here to illustrate the fact that two parts of the processing are different dependent on whether the transaction is of the sweep type (*sweepjmtx*) or not - in which case it is the canonical type (*cjmtx*).
+
+**Different logic for sweeps**: Sweep transactions have a small but technically very significant additional complexity: the transaction *amount*, i.e. the amount used for the coinjoin amount, is not known *until the list of orders is chosen*. This is because until the list of counterparty (maker) orders is chosen, the total coinjoin fee is not known (since each maker specifies their own coinjoin fee, and contribution to the total bitcoin transaction fee). The code handles this problem in the `choose_sweep_orders` function in `support.py`. It does this in an iterative process: first, the set of available orders is constructed. Then, each order is selected one by one based on the choose_orders algorithm the user preferred (which must be one of `weighted_order_choose` or `cheapest_order_choose`). Multiple orders from the same counterparty are rejected. Then, the coinjoin amount is calculated so as to leave zero change. Finally, each order in the chosen set is examined to see whether the newly calculated coinjoin amount is within its `minsize` and `maxsize` parameters. If not, that order is removed from the list, and the iteration continues until *all* chosen orders match with the calculated coinjoin size.
+
+The extra logic for bitcoin transaction fee handling for sweeps is covered in the bitcoin transaction fee [section](#bitcoin-transaction-fees).
+
+####The tumbler script
+
+This is designed to allow a `Taker` to heavily (if not perfectly) delink the coins in the wallet by means of a long sequence of coinjoins. The expected functionality is as follows.
+
+For the basic sequence of events, see the bullet point list in [Taker](#taker), bearing in mind that this is the multiple-coinjoin option.
+
+The syntax is:
+
+    python tumbler.py [options] [wallet file] [destaddr1] [[destaddr2] ...]
+
+By default, the tumbler will follow the steps listed below. In this `cjmtx` and `sweepjmtx` are as mentioned above for sendpayment.
+
+* User provides 1 or more addresses (the default is 3, although they can be added during the tumbler run) for payment along with several other configuration variables. See `--help` for this (long!) list of options.
+* Starting from one mixdepth (by default 0), follow these steps for each mixdepth:
+ * Run several cjmtx of varying amounts with some makers. Amount variation is according to a statistical distribution as specified in the options.
+ * Run a final sweepjmtx spending all remaining utxos to the next mixdepth, or to a chosen external address if more than one external address is specified.
+* Between each of these transactions is a randomised wait, again with a statistical distribution defined in the options.
+* The final transaction sweep from the final mixdepth spends out to the (last) external address provided at the start, so is a sweepjmtx with a spend as described earlier.
+
+**Pseudocode**:
+
+    load wallet
+    start msgchan
+    generate list of tumbler transactions
+    for each tx in list:
+      read orders from pit
+      read in tx variables: tx.N counterparties, tx.amount, tx.destaddr
+      if tx.destaddr = 'ask':
+        prompt user to provide address
+      set transaction fee estimate
+      choose orders using chosen algo
+      send !fill message to chosen counterparties and do encryption handshake
+      receive utxos
+      construct template transaction and send to all counterparties
+      receive signatures
+      broadcast transaction to bitcoin network
+      wait (lock) until 1 confirmation on network is seen
+      wait tx.wait_time
+
+Provision for failed makers is as specified in [handling unresponsive makers](#handling-unresponsive-makers), and provision is also made for the case where the orderbook has insufficient liquidity. The general philosophy is to not give up easily, as the code is usually intended to be running for a long time (a whole day is not uncommon).
+
 ---
+
+# Messaging Layer
+
+Todo.
+
+## Encrypted messaging
+
+Todo.
+
+---
+
+# Blockchain Interface
+
+Todo.
+
+---
+
+# Bitcoin Transaction Fees
+
+Todo.
+
+---
+
+# The Configuration File
+
+Todo.
 
