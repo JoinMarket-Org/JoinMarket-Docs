@@ -36,6 +36,10 @@ Over time, it is hoped that this will be greatly extended - in particular, via l
 
  * [Encrypted messaging](#encrypted-messaging)
 
+ * [Messaging handshake](#messaging-handshake)
+
+ * [Messaging protocol](#messaging-protocol)
+
 * [Blockchain Interface](#blockchain-interface)
 
 * [Bitcoin Transaction Fees](#bitcoin-transaction-fees)
@@ -390,11 +394,72 @@ Provision for failed makers is as specified in [handling unresponsive makers](#h
 
 # Messaging Layer
 
-Todo.
+As mentioned in the section on [Entities](#entities), each participant in Joinmarket must connect to a messaging channel in order to communicate with other Joinmarket participants. The broad functionality, required for any messaging layer is (ordered by priority):
+
+* Both broadcast and private messaging
+* Low latency (sub-second at least)
+* Availability (including DOS resistance)
+* Anonymity or facility thereof using common technologies (specifically, Tor)
+* Scalability
+* Decentralization
+
+Note that the list does *not* include encryption, because E2E encryption technology (including authentication and message integrity) can be used as a layer over the messaging channel. Thus while use of TLS for connection to the messaging layer may be desirable, it isn't necessary.
+
+Scalability is important due to the use of broadcast messages. It would be desirable to minimise this requirement; for example, using federated servers which publish orders out-of-band.
+
+Decentralization: not using message hubs/servers avoids trust issues and avoids potential censorship (can also help with availability, in some scenarios). Purely decentralized P2P messaging is a little difficult to achieve, especially for users who are not technically sophisticated (see: NAT punching).
+
+
+The message channel's functionality is abstracted in the module `message_channel.py`. The message_channel class contains methods for *sending* messages and for *registering callbacks to receive messages*.
 
 ## Encrypted messaging
 
-Todo.
+For the sake of privacy, it is required to end-to-end encrypt some part of the messages transferred between parties taking part in a coinjoin transaction. Note that this is not required for monetary security; that is handled by Bitcoin itself; technically it is also not *required* for coinjoin; a coinjoin in which the messages between participants are in plaintext over the wire would allow any passive observer to deduce the coin linkages, but not a future observer of the blockchain. Clearly, this distinction is somewhat academic and it would be highly undesirable to do coinjoins in this way entirely in plaintext over the wire.
+
+The technology used for this purpose is Daniel J Bernstein's [NaCl](https://nacl.cr.yp.to/), which uses Curve25519 elliptic curve cryptography and the Salsa20 stream cipher, with Poly1305 as the MAC. The specific implementation of this is [libsodium](https://libsodium.org), with the Python binding [libnacl](https://libnacl.readthedocs.org/en/latest/).
+
+This was chosen for its wide usage, high reputation in the community and a design based on a philosophy of "a highly secure default with as few options as possible". The particularly functionality used from the library is [authenticated encryption](https://libnacl.readthedocs.org/en/latest/topics/public.html) using keys derived via [ECDH](https://en.wikipedia.org/wiki/Elliptic_curve_Diffie%E2%80%93Hellman). Note that nonces for encryption are chosen randomly per-message **by default** in libnacl. This is worthy of note as nonce-reuse would be a critical security weakness.
+
+For abstraction this functionality is exposed via a separate module in Joinmarket, `enc_wrapper.py` (this wrapper is currently entirely transparent).
+
+## Messaging handshake.
+
+**In the clear** :
+
+    TAK: !fill <order id> <coinjoin amount> <taker encryption pubkey>
+    MAK: !pubkey <maker encryption pubkey>
+
+Both maker and taker construct a libnacl crypto `Box` object to allow authenticated encryption between the parties.
+These Box objects are properties of the `CoinJoinTx` and `CoinJoinOrder` objects, so they are specific to 
+transactions and not to `Maker` and `Taker` entities.
+
+**Encrypted** :
+
+    TAK: !auth <input utxo pubkey> <btc sig of taker encryption pubkey using input utxo pubkey>
+
+(Maker verifies the btc sig; if not valid, connection is dropped - send REJECT message)
+
+    MAK: !ioauth <utxo list> <coinjoin pubkey> <change address> <btc sig of maker encryption pubkey using coinjoin pubkey>
+
+(Taker verifies the btc sig; if not valid, as for previous)
+
+Because the `!auth` messages are under encryption, there is no privacy leak of bitcoin pubkeys or output addresses.
+
+If both verifications pass, the remainder of the messages exchanged between the two parties will continue under encryption.
+
+Specifically, these message types will be encrypted:
+
+* `!auth`
+* `!ioauth`
+* `!tx`
+* `!sig`
+
+Note on the above: A key part of the authorisation process is the matching between the bitcoin pubkeys used in the coinjoin transaction and the encryption pubkeys used. This ensures that the messages we are sending are only
+readable by the entity which is conducting the bitcoin transaction with us. To ensure this, the maker should not sign any transaction that doesn't use the previously identified input utxo as its input, and the taker should not push/sign any transaction that doesn't use the previously identified maker coinjoin pubkey/address as its output.
+
+## Messaging protocol.
+
+See separate [document](https://github.com/JoinMarket-Org/JoinMarket-Docs/blob/master/Joinmarket-messaging-protocol.md) TODO: Fix broken links.
 
 ---
 
