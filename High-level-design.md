@@ -465,7 +465,88 @@ See separate [document](https://github.com/JoinMarket-Org/JoinMarket-Docs/blob/m
 
 # Blockchain Interface
 
-Todo.
+The module `blockchaininterface.py` attempts to encapsulate all access to the Bitcoin blockchain, whether via a centralized API service or a local Bitcoin node. 
+
+The abstract base class `BlockchainInterface` declares the following 6 abstract methods:
+
+    @abc.abstractmethod
+    def sync_addresses(self, wallet):
+        """Finds which addresses have been used and sets
+        wallet.index appropriately"""
+        pass
+
+    @abc.abstractmethod
+    def sync_unspent(self, wallet):
+        """Finds the unspent transaction outputs belonging to this wallet,
+        sets wallet.unspent """
+        pass
+
+    @abc.abstractmethod
+    def add_tx_notify(self, txd, unconfirmfun, confirmfun, notifyaddr):
+        """Invokes unconfirmfun and confirmfun when tx is seen on the network"""
+        pass
+
+    @abc.abstractmethod
+    def pushtx(self, txhex):
+        """pushes tx to the network, returns txhash, or None if failed"""
+        pass
+
+    @abc.abstractmethod
+    def query_utxo_set(self, txouts):
+        """
+        takes a utxo or a list of utxos
+        returns None if they are spend or unconfirmed
+        otherwise returns value in satoshis, address and output script
+        """
+        # address and output script contain the same information btw
+    
+    @abc.abstractmethod
+    def estimate_fee_per_kb(self, N):
+        '''Use the blockchain interface to 
+        get an estimate of the transaction fee per kb
+        required for inclusion in the next N blocks.
+	'''
+
+Current, and any future, classes inheriting from `BlockchainInterface` must therefore implement these methods, which are more or less the required functionality for running either a `Maker` or a `Taker` entity in Joinmarket.
+
+The current implementations are:
+
+* `BitcoinCoreInterface`
+* `BlockrInterface`
+* `RegtestBitcoinCoreInterface`
+
+`BitcoinCoreInterface` is in some sense the most fundamental case: Joinmarket is really designed to be run with a Core node, as this is much better for privacy than using an SPV wallet or a web API interface. This point is emphasized in the [Joinmarket wiki](https://github.com/JoinMarket-Org/joinmarket/wiki/Running-JoinMarket-with-Bitcoin-Core-full-node#running-joinmarket-with-bitcoin-core-full-node).
+
+`RegtestBitcoinCoreInterface` is for testing using the regtest feature of Bitcoin Core. `RegtestBitcoinCoreInterface` inherits from `BitcoinCoreInterface` and adds a couple of extra features related to testing - the ability to trigger a new block, and the ability to make payments of arbitrary amounts of testnet coins to balances as required. There is more information on setup in [this wiki page](https://github.com/JoinMarket-Org/joinmarket/wiki/Testing). This testing setup could be streamlined and improved, but the fundamental idea is important: it is possible to simulate an entire joinmarket trading pit using a local IRC daemon and a Bitcoin regtest daemon, without having to worry about use of real bitcoins.
+
+`BlockrInterface` uses the API from [Blockr](https://btc.blockr.io) to access blockchain data. Despite the strong caveats mentioned above, this is used by those without the patience or technical know-how to use Core.
+
+A detail worthy of mention is that Blockr's API does not expose the rpc `estimatefee` which is needed for the abstract method `BlockchainInterface.estimate_fee_per_kb`; for this, the API of [blockypher](http://dev.blockcypher.com) is currently used, but it could of course change.
+
+It is of course likely and desirable that other implementations be developed, e.g. `BlocktrailInterface` relying on the [Blocktrail](https://blocktrail.com) API. One could even envisage ameliorating privacy problems by mixing access to several (although this doesn't ameliorate, for example, the performance issue with polling web APIs).
+
+## The NotifyThread
+
+Both `Maker` and `Taker` entities need, in general, to be able to respond to the two principal "events" that can occur for a transaction on the Bitcoin blockchain: (1) transaction acceptance into a local memory pool and (2) transaction getting mined into a block for the first time. Of course (1) is a rather nebulous "event" since it's not global and not necessarily final, but for practical purposes it's treated as an event. As was discussed in the [Maker](#maker) and [Taker](#taker) sections, these events trigger callbacks `unconfirmfun` and `confirmfun`, which vary per entity. Triggering this requires "listening" to the blockchain. 
+
+Thus, after a `Maker` or `Taker` has completed transaction negotiation with their counterparty, they access the global bc_interface (by calling `configure.jm_single().bc_interface`) and start a `NotifyThread`. This is done via a call to `add_tx_notify` (TODO why isn't this an abstract method? don't all blockchaininterface instances need it?). 
+
+**For BitcoinCoreInterface**: On the first call to `add_tx_notify`, the `NotifyThread` thread is started. This thread starts an http server daemon, listening on the (host,port) specified in the configuration under section "BLOCKCHAIN" and settings "notify_host", "notify_port". 
+
+The http daemon is an instance of `BaseHTTPServer.HTTPServer` and is instantiated with a class derived from `BaseHTTPServer.BaseHTTPRequestHandler` named `NotifyRequestHeader`. This class receives `HEAD` requests, specifically:
+
+    /walletnotify?
+    /alertnotify?
+
+This corresponds to configuration in BitcoinCore that allows it to make HTTP requests whenever a wallet 'event' occurs (the arrival of (unconfirm) or confirmation of a transaction which is connected to the wallet). Note that the addresses in the **Joinmarket** [wallet](#wallets) are added as watch-only to Bitcoin Core, meaning that Core does not know their private keys but keeps track of them in a separate account. The account is named as 
+
+    joinmarket-XXXXXX
+
+(XXXXXX = first 6 characters of the hex encoding of double-sha256 of the first address in the external branch of the first mixdepth of the Joinmarket wallet). Thus Bitcoin Core is set up to fire `walletnotify` when an event happens for the `Maker` or `Taker`'s wallet.
+
+`alertnotify` is triggered by alerts in BitcoinCore, which happens very rarely. The information in the alert is passed on to Joinmarket and it is displayed on the terminal as well as in the logs.
+
+ On subsequent calls, extra callbacks (`unconfirmfun` and `confirmfun`) are added to the `bc_interface.txnotify_fun` list, to be called for each blockchain event.
 
 ---
 
@@ -478,4 +559,5 @@ Todo.
 # The Configuration File
 
 Todo.
+
 
