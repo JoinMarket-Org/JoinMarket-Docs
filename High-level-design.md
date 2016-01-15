@@ -42,6 +42,7 @@ Over time, it is hoped that this will be greatly extended - in particular, via l
 
 * [Blockchain Interface](#blockchain-interface)
 
+ * [The Notify Thread](#the-notify-thread)
 * [Bitcoin Transaction Fees](#bitcoin-transaction-fees)
 
 * [The Configuration File](#the-configuration-file)
@@ -525,11 +526,13 @@ A detail worthy of mention is that Blockr's API does not expose the rpc `estimat
 
 It is of course likely and desirable that other implementations be developed, e.g. `BlocktrailInterface` relying on the [Blocktrail](https://blocktrail.com) API. One could even envisage ameliorating privacy problems by mixing access to several (although this doesn't ameliorate, for example, the performance issue with polling web APIs).
 
-## The NotifyThread
+## The Notify Thread
 
 Both `Maker` and `Taker` entities need, in general, to be able to respond to the two principal "events" that can occur for a transaction on the Bitcoin blockchain: (1) transaction acceptance into a local memory pool and (2) transaction getting mined into a block for the first time. Of course (1) is a rather nebulous "event" since it's not global and not necessarily final, but for practical purposes it's treated as an event. As was discussed in the [Maker](#maker) and [Taker](#taker) sections, these events trigger callbacks `unconfirmfun` and `confirmfun`, which vary per entity. Triggering this requires "listening" to the blockchain. 
 
 Thus, after a `Maker` or `Taker` has completed transaction negotiation with their counterparty, they access the global bc_interface (by calling `configure.jm_single().bc_interface`) and start a `NotifyThread`. This is done via a call to `add_tx_notify` (TODO why isn't this an abstract method? don't all blockchaininterface instances need it?). 
+
+The call to `add_tx_notify` appends an entry to a list named `txnotify_fun`, which is a list of tuples of the format `(tx_output_set, unconfirmfun, confirmfun)`.
 
 **For BitcoinCoreInterface**: On the first call to `add_tx_notify`, the `NotifyThread` thread is started. This thread starts an http server daemon, listening on the (host,port) specified in the configuration under section "BLOCKCHAIN" and settings "notify_host", "notify_port". 
 
@@ -546,18 +549,50 @@ This corresponds to configuration in BitcoinCore that allows it to make HTTP req
 
 `alertnotify` is triggered by alerts in BitcoinCore, which happens very rarely. The information in the alert is passed on to Joinmarket and it is displayed on the terminal as well as in the logs.
 
- On subsequent calls, extra callbacks (`unconfirmfun` and `confirmfun`) are added to the `bc_interface.txnotify_fun` list, to be called for each blockchain event.
+ On subsequent calls, extra callbacks (`unconfirmfun` and `confirmfun`) are added to the `bc_interface.txnotify_fun` list, to be called for each blockchain event. Over long periods of operation therefore, a long list of such notify functions could accrue; but since this is just a list of function pointers, it isn't important.
+
+On reception of a `/walletnotify?txid` request, the `NotifyRequestHeader.do_HEAD` method is called, which checks the content of the transaction specified by `txid` by calling `getrawtransaction`, and then searches the set of elements of `BitcoinCoreInterface.notify_fun` to see if any of them contain the outputs of the transaction in their first element `tx_output_set` as described above. If so, it is those functions `unconfirmfun` and `confirmfun` which are the other two elements of the tuple in that list entry, which are called (which is called depends on whether the transaction data got from `getrawtransaction` shows the number of confirmations as zero or not).
+
+**For BlockrInterface** : 
+
+In this case, each call to `add_tx_notify` spawns a separate `NotifyThread` object. Hardcoded (currently) timeouts are used to decide when to stop listening for transaction arrival and confirmation:
+
+    unconfirm_timeout = 10 * 60  # seconds
+    unconfirm_poll_period = 5
+    confirm_timeout = 2 * 60 * 60
+    confirm_poll_period = 5 * 60
+
+This is unfortunately a necessary design; we must poll with API calls to the remote server to update the state. No doubt, there are more sophisticated and efficient designs that could be looked into.
+
+The thread is initiated with the transaction data and the specific `unconfirmfun` and `confirmfun` function pointers to trigger once the events occur on the blockchain.
 
 ---
 
 # Bitcoin Transaction Fees
 
-Todo.
+The earlier versions of Joinmarket used a fixed transaction fee, with a 10000 satoshi default and the ability to customise it by the Taker, using the `-f` option to `sendpayment.py` and `tumbler.py`. This is clearly not ideal, since the effectiveness of a particular transaction fee in allowing quick confirmation is a function of the size of the transaction in bytes. It was regularly observed that transactions are created with large size (say, 2-4 kB) and which were not being confirmed quickly.
+
+## Fee Estimation Calculation
+
+First, the size of a transaction in bytes must be estimated. This is currently found in `bitcoin.main.estimate_tx_size`, which shows the formula in comments:
+
+    '''Estimate transaction size.
+    Assuming p2pkh:
+    out: 8+1+3+2+20=34, in: 1+32+4+1+1+~73+1+1+33=147,
+    ver:4,seq:4, +2 (len in,out)
+    total ~= 34*len_out + 147*len_in + 10 (sig sizes vary slightly)
+    '''
+
+To expand: the 34 \* (number of outputs in the bitcoin transaction) + 147\* (number of inputs) + 10 is estimated as the size of the transaction in bytes. **Note** that this is not correct for p2sh transactions, but a separate more sophisticated calculation including the possibility of mixed p2pkh and p2sh utxos is not yet implemented.
+
+The output of this calculation is passed to `wallet.estimate_tx_fee()`, which takes the number of bytes and multiplies it by the estimated fee per kB (see the list of abstract methods in [BlockchainInterface](#blockchain-interface)). The estimated fee per kB is dependent on the configuration variable set in the config section POLICY and the variable `tx_fees`, which (confusingly?) is the number of confirmations to target. Thus a relatively impatient Taker may set `tx_fees` to 1, to target confirmation in the next block, and a relatively patient taker may set it to 3 or more.
+
 
 ---
 
 # The Configuration File
 
 Todo.
+
 
 
