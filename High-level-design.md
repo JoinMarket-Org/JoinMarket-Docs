@@ -12,7 +12,11 @@ Over time, it is hoped that this will be greatly extended - in particular, via l
 
  * [External and Internal Branches](#use-of-external-and-internal-branches)
 
+ * [`Wallet` object](#wallet-object)
+
  * [Wallet generation and access control](#wallet-generation-and-access-control)
+
+ * [Wallet persistence](#wallet-persistence)
 
  * [`wallet-tool.py`](#the-wallet-toolpy-script)
 
@@ -44,6 +48,12 @@ Over time, it is hoped that this will be greatly extended - in particular, via l
 
  * [The Notify Thread](#the-notify-thread)
 * [Bitcoin Transaction Fees](#bitcoin-transaction-fees)
+
+* [Orders and the trading pit](#orders-and-the-trading-pit)
+
+ * [Public entity identities](#public-entity-identities)
+
+ * [Orders](#orders)
 
 * [The Configuration File](#the-configuration-file)
 
@@ -138,6 +148,31 @@ In a joinmarket [transaction](#transactions), outputs go to: (1) coinjoin output
 
 The logic of this is fairly straightforward, and central to how Joinmarket works, so make sure to understand it: **the coinjoin outputs of a transaction must not be reused with any of the inputs to that same transaction, or any other output that can be connected with them, as this would allow fairly trivial linkage**. By moving coinjoin outputs to an entirely separate branch, isolation is enforced.
 
+## `Wallet` object
+
+The `Wallet` class is found in the module `joinmarket.wallet`. Its member variables, which are persisted to disk, are:
+
+    addr_cache
+    unspent
+    seed
+    gaplimit
+    keys
+    index
+
+**addr_cache** is a dict, with each entry of format `Bitcoin address: (mixing depth, external/internal flag, index)`. The external/internal flag is 0/1 and the index is the index of the address on the branch. Note that the address itself **is not** persisted, only the index of the first unused key (and address) on each specific branch (see [here](#wallet-persistence)). 
+
+**unspent** is a dict, with each entry of format `utxo: {'address': address, 'value': amount in satoshis}`, where `utxo` has format txid:n as usual in Bitcoin wallets. This is the fundamental data structure that Joinmarket uses to decide which coins to spend in joins.
+
+**seed** is the master secret of the BIP32 wallet. See [this section](#wallet-generation-and-access-control) for more details.
+
+**gaplimit** is used to decide how many addresses to search forwards (through unused addresses on a branch) before giving up and assuming no more addresses on that branch have been used. This is as usual for HD wallets; the default value is 6.
+
+**keys** is a list of pairs of parent keys that are used to generate the individual branches, i.e. it has the form: `[(key for mixdepth 0 external branch, key for mixdepth 0 internal branch), (key for mixdepth 1 external branch, key for mixdepth 1 internal branch), ...]`
+
+TODO: add documentation on using imported keys.
+
+**index** this (too generically named!) is a list of pairs of pointers into each of the branches, marking the first unused address in that branch, format `[[a,b],[c,d]...]` with each letter standing for a positive integer. Note that this **is** [persisted](#wallet-persistence) to file storage to prevent address reuse in case of failures.
+
 ## Wallet generation and access control
 
 The master private key is generated via a call to Python's `os.urandom`, this being the interface to the underlying OS randomness source. It is then passed through two rounds of SHA256. It is a 32 byte random string (which is the advised seed length for BIP32).
@@ -147,6 +182,8 @@ This seed is used to generate the wallet structure described above and according
 The recovery seedphrase is a 12 word phrase of the type used in earlier versions of Electrum, and using that code base, specifically see the functions `mn_encode` and `mn_decode` in the module `old_mnemonic.py`, which uses a 1626 word list, also found in that file (note: 1626<sup>12</sup> implies 128 bit security). A commonly asked question is whether and why not Joinmarket supports BIP39. For now, the answer to that question is that it isn't relevant; since JM's wallet uses this specific HD structure, designed to allow coinjoins to occur safely, it is not directly compatible with other wallets. This may change in the future, however.
 
 The wallet seed is encrypted for persistent storage using AES in CBC mode, using the module `slowaes.py`. Note that a bug was found earlier in this module's handling of PKCS7, which could have allowed 'decryption' with a wrong password (to garbage), but this was [fixed](https://github.com/JoinMarket-Org/joinmarket/pull/191).
+
+## Wallet persistence
 
 The wallet is persisted to disk in this format:
 
@@ -159,6 +196,10 @@ The wallet is persisted to disk in this format:
 **encrypted_seed** is a 48 byte hex encoded string - this is 3 AES blocks, the plaintext being the 32 byte seed, the final block's plaintext being entirely pkcs7 padding.
 
 **creation_time**, **network** and **creator** are self-explanatory.
+
+Wallet persistence to disk only occurs in these scenarios: when using [`wallet-tool.py`](#the-wallet-toolpy-script), either generating a wallet or importing keys, and in the initialisation of the `CoinJoinOrder` object, which calls `update_cache_index()` method of the `Wallet` object (to prevent address reuse).
+
+However, it's important to remember that the Bitcoin blockchain itself is another deeper layer of persistence; on starting a `Maker` or `Taker` bot, the wallet's `unspent` variable is updated by querying the `sync_unspent` method of the `BlockchainInterface` instance (see [Blockchain Interface](#blockchain-interface)).
 
 ## The `wallet-tool.py` script
 
@@ -232,6 +273,10 @@ A Joinmarket maker offers liquidity for coinjoins (hence the terminology, borrow
 * Participate in a handshake to set up the coinjoin transaction
 * Provide the `Taker` with signatures for an agreed upon coinjoin transaction
 * Watch the blockchain for updates, updating its state (including wallet) when a transaction appears.
+
+### Publishing orders
+
+A Maker is by definition an entity that broadcasts its availability to do coinjoins. It published what are called [orders](#orders) - but note that functionally these are *offers*.
 
 ### Design considerations
 
@@ -587,12 +632,46 @@ To expand: the 34 \* (number of outputs in the bitcoin transaction) + 147\* (num
 
 The output of this calculation is passed to `wallet.estimate_tx_fee()`, which takes the number of bytes and multiplies it by the estimated fee per kB (see the list of abstract methods in [BlockchainInterface](#blockchain-interface)). The estimated fee per kB is dependent on the configuration variable set in the config section POLICY and the variable `tx_fees`, which (confusingly?) is the number of confirmations to target. Thus a relatively impatient Taker may set `tx_fees` to 1, to target confirmation in the next block, and a relatively patient taker may set it to 3 or more.
 
+---
+
+# Orders and the trading pit
+
+The joinmarket 'pit' is where communication takes place in order to coordinate joins. Messages are **broadcast** to the pit to update the state of maker bots, and to request order information from Maker bots. See [orders](#orders) below.
+
+Further coordination between proposed participants in a join happens using **private** (not broadcast messages) to individual [entities](#entities), and this process is described in the [section](#messaging-layer) on the messaging layer, and the sub-document on the messaging [protocol](https://github.com/joinmarket-org/joinmarket-docs/Joinmarket-messaging-protocol.md).
+
+The Joinmarket pit broadcast layer is public information, and it can be viewed by anyone, for example it is currently available [here](https://joinmarket.io).
+
+## Public entity identities
+
+Entities can connect to the pit over Tor, either directly or via the IRC hidden service. If future, different messaging layers than IRC are implemented, it is strongly intended to preserve this possibility (either using Tor or an equivalently strong anonymity layer). However direct network connections are also supported.
+
+Thus, entities are intended to be anonymous by default, but they can use persistent naming if they choose. The default naming of entities is using a simple randomised string, the code for which is currently in `joinmarket.irc.random_nick()`. Thus, by default, an entity's 'name' in the pit will change on every restart.
+
+## Orders
+
+Orders must be of a recognised type, currently one of:
+
+* relorder
+* absorder
+
+The list of valid order types is accessed in `joinmarket.configure.jm_single().ordername_list`. Orders of a type not included in this list will be ignored by Taker entities.
+
+Several parameters are to be included with the order, currently:
+
+* `cjfee`: the amount, in percentage or satoshis, required for the Taker to pay the Maker.
+* `txfee`: the contribution, in satoshis, that the Maker will contribute to the overall Bitcoin transaction fee. Note: this may be deprecated in future version.
+* `minsize`: the minimum size of the coinjoin output, in satoshis, that the Maker will agree to.
+* `maxsize`: the maximum size of the coinjoin output, in satoshis, that the Maker will agree to.
+
+The exact syntax of the messages to broadcast orders is found in the [protocol doc](https://github.com/JoinMarket-org/joinmarket-docs/joinmarket-messaging-protocol.md).
 
 ---
 
 # The Configuration File
 
 Todo.
+
 
 
 
