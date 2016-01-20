@@ -144,9 +144,12 @@ Balances displayed by [`wallet-tool.py`](#the-wallet-toolpy-script) **include un
 
 Payments into the wallet should be made into new addresses on the `external` branch for any mixdepth. For the above wallet, `muaApeqh9L4aQvR6Fn52oDiqz8jKKu9Rfz` (from mixdepth 2) or `mrgNjQWjrBDB821o1Q3qG6EmKJmEqgjtqY` (from mixdepth 4) would be suitable candidates. The index of the address on the branch is shown as the final 3 digit integer in the identifier. As usual with deterministic wallets, a configurable gap-limit variable is used to determine how far forwards to search after unused/new addresses are located.
 
-In a joinmarket [transaction](#transactions), outputs go to: (1) coinjoin outputs -> external addresses in the next mixdepth (where 'next' means (mixdepth+1 % M)), (2) change outputs -> internal addresses in the same mixdepth.
+In joinmarket [transactions](#transactions), a single destination output goes to the address designated by the transaction initiator (which need not be an address in a joinmarket wallet; it could be any valid Bitcoin address, including P2SH). The remaining outputs go to internal addresses as follows:
+- If the transaction initiator has any change left ("sweep" transactions send a precise amount, without leaving change), it is sent to a new address in the internal branch of the same mixdepth as the initiator's inputs.
+- Each liquidity provider sends a single change output to a new address in the same mixdepth as its inputs.
+- Each liquidity provider sends a single output (with size identical to that of the destination output) to a new address in the next mixdepth, wrapping back to the first (that is, the mixdepth in BIP32 branch zero) upon reaching `max_mix_depth`.
 
-The logic of this is fairly straightforward, and central to how Joinmarket works, so make sure to understand it: **the coinjoin outputs of a transaction must not be reused with any of the inputs to that same transaction, or any other output that can be connected with them, as this would allow fairly trivial linkage**. By moving coinjoin outputs to an entirely separate branch, isolation is enforced.
+The logic of this is fairly straightforward, and central to how Joinmarket works, so make sure to understand it: **the coinjoin outputs of a transaction must not be reused with any of the inputs to that same transaction, or any other output that can be connected with them, as this would allow fairly trivial linkage**. Merging such outputs is avoided by picking the inputs for a transaction only from a single mixdepth (although both internal and external branches can be used).
 
 ## `Wallet` object
 
