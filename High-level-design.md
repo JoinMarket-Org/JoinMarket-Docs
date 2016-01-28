@@ -298,7 +298,7 @@ Once a request is received from a taker, the maker creates a new `CoinJoinOrder`
 
 ### The CoinJoinOrder object
 
-The `CoinJoinOrder` object is perhaps poorly named; it manages the process of negotiating a single transaction with a taker for this maker, once a order fill request has been received. See [here](https://github.com/Joinmarket-Org/joinmarket/encryption_protocol.txt) for the steps of negotiation.
+The `CoinJoinOrder` object is perhaps poorly named; it manages the process of negotiating a single transaction with a taker for this maker, once a order fill request has been received. See [here](https://github.com/Joinmarket-Org/joinmarket-docs/blob/master/encryption_protocol.txt) for the steps of negotiation.
 
 If the negotiation is successful from the maker's point of view, it will add a notification function to the list `txnotify_fun` in the `BlockchainInterface` instance, and thus register callbacks `unconfirm_callback` and `confirm_callback` for this transaction.
 
@@ -641,7 +641,7 @@ The output of this calculation is passed to `wallet.estimate_tx_fee()`, which ta
 
 The joinmarket 'pit' is where communication takes place in order to coordinate joins. Messages are **broadcast** to the pit to update the state of maker bots, and to request order information from Maker bots. See [orders](#orders) below.
 
-Further coordination between proposed participants in a join happens using **private** (not broadcast messages) to individual [entities](#entities), and this process is described in the [section](#messaging-layer) on the messaging layer, and the sub-document on the messaging [protocol](https://github.com/joinmarket-org/joinmarket-docs/Joinmarket-messaging-protocol.md).
+Further coordination between proposed participants in a join happens using **private** (not broadcast messages) to individual [entities](#entities), and this process is described in the [section](#messaging-layer) on the messaging layer, and the sub-document on the messaging [protocol](https://github.com/joinmarket-org/joinmarket-docs/blob/master/Joinmarket-messaging-protocol.md).
 
 The Joinmarket pit broadcast layer is public information, and it can be viewed by anyone, for example it is currently available [here](https://joinmarket.io).
 
@@ -667,7 +667,7 @@ Several parameters are to be included with the order, currently:
 * `minsize`: the minimum size of the coinjoin output, in satoshis, that the Maker will agree to.
 * `maxsize`: the maximum size of the coinjoin output, in satoshis, that the Maker will agree to.
 
-The exact syntax of the messages to broadcast orders is found in the [protocol doc](https://github.com/JoinMarket-org/joinmarket-docs/joinmarket-messaging-protocol.md).
+The exact syntax of the messages to broadcast orders is found in the [protocol doc](https://github.com/JoinMarket-org/joinmarket-docs/blob/master/joinmarket-messaging-protocol.md).
 
 ---
 
