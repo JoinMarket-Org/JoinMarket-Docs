@@ -667,7 +667,7 @@ Several parameters are to be included with the order, currently:
 * `minsize`: the minimum size of the coinjoin output, in satoshis, that the Maker will agree to.
 * `maxsize`: the maximum size of the coinjoin output, in satoshis, that the Maker will agree to.
 
-The exact syntax of the messages to broadcast orders is found in the [protocol doc](https://github.com/JoinMarket-org/joinmarket-docs/blob/master/joinmarket-messaging-protocol.md).
+The exact syntax of the messages to broadcast orders is found in the [protocol doc](https://github.com/JoinMarket-org/joinmarket-docs/blob/master/Joinmarket-messaging-protocol.md).
 
 ---
 
