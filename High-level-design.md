@@ -230,14 +230,14 @@ We can define 4 distinct joinmarket transaction types. We use the notation "JMTx
  This is usually an ordinary bitcoin transaction paying into an unused address on an external branch for any one of the mixdepths of the wallet. As such it has no special joinmarket structure; it will usually have a change output, which will go back to the wallet funding this one. It *could*, however, be a payment from another joinmarket wallet, although most users will not be using more than one joinmarket wallet. This doesn't affect the analysis, in any case.
 
 2. (Canonical) CJMTx
- The most fundamental type of joinmarket transaction involves neither a 'source' nor a 'sink', but only spends from this joinmarket wallet to itself, in conjunction with joining counterparties. The coinjoin output goes to a new address on the external branch of the *next* mixdepth, as was described in the previous section.
+ The most fundamental type of joinmarket transaction involves neither a 'source' nor a 'sink', but only spends from this joinmarket wallet to itself, in conjunction with joining counterparties. The coinjoin output goes to a new address on the internal branch of the *next* mixdepth, as was described in the previous section.
 
  ![alt text](/images/CJMTx.png)
 
  **NOTE**: the above diagram ignores transaction fees and coinjoin fees for simplicity, which slightly change the size of the change outputs; this obviously cannot be ignored in real analysis.
 
 3. SpendJMTx
- This is a 'sink' transaction. This, generated either by `sendpayment.py` or `tumbler.py` scripts usually, will be the same as the CJMTx above, except with the difference that the coinjoin output for the initiator (taker) goes to an external address, e.g. a payment or a transfer to an external wallet.
+ This is a 'sink' transaction. This, generated either by `sendpayment.py` or `tumbler.py` scripts usually, will be the same as the CJMTx above, except with the difference that the coinjoin output for the initiator (taker) goes to an address from another wallet, e.g. a payment or a transfer to an external wallet.
 
 4. SweepJMTx
  This can be either a 'sink' or not, depending on the destination of the coinjoin output. A sweep is characterised by 2 things: (a) the initiator will not create a change output, and (b) the initiator will consume **all** of the utxos in the given mixdepth (both internal and external branches) as inputs, leaving no coins left in that mixdepth.
