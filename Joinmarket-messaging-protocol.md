@@ -59,7 +59,7 @@ These rules are currently enforced [here](https://github.com/chris-belcher/joinm
 
 All encrypted messages are [base64 encoded](https://github.com/chris-belcher/joinmarket/blob/master/lib/enc_wrapper.py#L63-L69) before being passed onto the message channel.
 
-For encrypted messages, the entire set of message fields are sent as a single encrypted block (including the whitespace delimiters between the message fields). The command field and the chunk indicator field are sent in plaintext. (TODO: to improve privacy padding should be added to some or all of these messages; eg, to combat MITM correlation of ioauth and sig messages with the inputs belonging to a liquidity provider, dummy inputs and signatures can be sent).
+For encrypted messages, the entire set of message fields are sent as a single encrypted block (including the whitespace delimiters between the message fields). The command field and the chunk indicator field are sent in plaintext. (TODO: [pad messages to improve privacy](https://github.com/JoinMarket-Org/joinmarket/issues/352); eg, to combat MITM correlation of ioauth and sig messages with the inputs belonging to a liquidity provider, dummy inputs and signatures can be sent).
 
 For clarification, the sequence for sending of encrypted messages is therefore plaintext-->encryption-->base64encoding-->chunking--> prepend !command to first chunk and add chunk delimiters -->send to message channel (private message for encryption). And the reverse for receiving.
 
