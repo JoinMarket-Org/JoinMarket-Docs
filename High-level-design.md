@@ -450,13 +450,15 @@ As mentioned in the section on [Entities](#entities), each participant in Joinma
 * Availability (including DOS resistance)
 * Anonymity or facility thereof using common technologies (specifically, Tor)
 * Scalability
-* Decentralization
+* Censorship Resistance
 
 Note that the list does *not* include encryption, because E2E encryption technology (including authentication and message integrity) can be used as a layer over the messaging channel. Thus while use of TLS for connection to the messaging layer may be desirable, it isn't necessary.
 
 Scalability is important due to the use of broadcast messages. It would be desirable to minimise this requirement; for example, using federated servers which publish orders out-of-band.
 
-Decentralization: not using message hubs/servers avoids trust issues and avoids potential censorship (can also help with availability, in some scenarios). Purely decentralized P2P messaging is a little difficult to achieve, especially for users who are not technically sophisticated (see: NAT punching).
+Decentralization: not using centralized hubs/servers avoids trust issues and avoids potential censorship (can also help with availability, in some scenarios). Purely decentralized P2P messaging is a little difficult to achieve, especially for users who are not technically sophisticated (see: NAT punching).
+
+Censorship resistance must be strong against the peers themselves. For example in a pure p2p network the makers have an incentive to not forward offers from competing makers.
 
 
 The message channel's functionality is abstracted in the module `message_channel.py`. The message_channel class contains methods for *sending* messages and for *registering callbacks to receive messages*.
