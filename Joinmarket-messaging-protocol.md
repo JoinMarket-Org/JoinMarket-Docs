@@ -79,8 +79,8 @@ Valid conversation sequences:
 | :---------:|:----:|:-------:|
 |!fill(private)|>>>||
 ||<<<|!pubkey(private)|
-|!ioauth(private)|>>>||
-||<<<|!auth(private)|
+|!auth(private)|>>>||
+||<<<|!ioauth(private)|
 |!tx(private)|>>>||
 ||<<<|!sig(private)|
 
