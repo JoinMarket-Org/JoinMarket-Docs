@@ -645,7 +645,7 @@ The joinmarket 'pit' is where communication takes place in order to coordinate j
 
 Further coordination between proposed participants in a join happens using **private** (not broadcast messages) to individual [entities](#entities), and this process is described in the [section](#messaging-layer) on the messaging layer, and the sub-document on the messaging [protocol](https://github.com/joinmarket-org/joinmarket-docs/blob/master/Joinmarket-messaging-protocol.md).
 
-The Joinmarket pit broadcast layer is public information, and it can be viewed by anyone, for example it is currently available [here](https://joinmarket.io).
+The Joinmarket pit broadcast layer is public information, and it can be viewed by anyone, for example it is currently available [here](https://joinmarket.me/ob).
 
 ## Public entity identities
 
