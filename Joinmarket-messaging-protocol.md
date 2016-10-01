@@ -54,7 +54,7 @@ Encryption
 
 Public messages (broadcast to all other participants) are never encrypted.
 
-Private messages of command-type `fill`, `pubkey`, `error`, `orderbook`, `push`, `reloffer` and 'absoffer` are sent in plaintext.
+Private messages of command-type `fill`, `pubkey`, `error`, `orderbook`, `push`, `reloffer` and `absoffer` are sent in plaintext.
 Messages of command-type `ioauth`, `auth`, `tx` and `sig` are sent encrypted.
 These rules are enforced [here](https://github.com/JoinMarket-Org/joinmarket/blob/35dc60848c201f1c071a00c885969d1cc458cbbf/joinmarket/message_channel.py#L13-L16) and [here](https://github.com/JoinMarket-Org/joinmarket/blob/35dc60848c201f1c071a00c885969d1cc458cbbf/joinmarket/message_channel.py#L818-L826).
 
