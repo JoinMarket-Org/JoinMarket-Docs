@@ -398,7 +398,7 @@ The parameter 'sweep' is used here to illustrate the fact that two parts of the 
 
 The extra logic for bitcoin transaction fee handling for sweeps is covered in the bitcoin transaction fee [section](#bitcoin-transaction-fees).
 
-####The tumbler script
+#### The tumbler script
 
 This is designed to allow a `Taker` to heavily (if not perfectly) delink the coins in the wallet by means of a long sequence of coinjoins. The expected functionality is as follows.
 
