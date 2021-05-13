@@ -29,6 +29,7 @@ The first field always starts with the [command prefix](https://github.com/JoinM
 |sig||private|
 |error||private|
 |push||private|
+|tbond||private|
 
 Private messages not starting with a command from this list are to be explicitly rejected.
 Public messages not starting with a command from this list are to be ignored.
@@ -54,7 +55,7 @@ Encryption
 
 Public messages (broadcast to all other participants) are never encrypted.
 
-Private messages of command-type `fill`, `pubkey`, `error`, `orderbook`, `push`, `reloffer` and `absoffer` are sent in plaintext.
+Private messages of command-type `fill`, `pubkey`, `error`, `orderbook`, `push`, `reloffer`, `absoffer` and `tbond` are sent in plaintext.
 Messages of command-type `ioauth`, `auth`, `tx` and `sig` are sent encrypted.
 These rules are enforced [here](https://github.com/JoinMarket-Org/joinmarket/blob/35dc60848c201f1c071a00c885969d1cc458cbbf/joinmarket/message_channel.py#L13-L16) and [here](https://github.com/JoinMarket-Org/joinmarket/blob/35dc60848c201f1c071a00c885969d1cc458cbbf/joinmarket/message_channel.py#L818-L826).
 
@@ -104,6 +105,7 @@ Valid conversation sequences:
 | :---------:|:----:|:-------:|
 |!orderbook(public)|>>>||
 || <<<| ![rel\|abs]order (private)|
+|| <<<| !tbond (private)|
 
 | TAKER    |      | MAKER |
 | :---------:|:----:|:-------:|
@@ -121,7 +123,7 @@ Each taker may speak to many makers simultaneously and each maker may speak to m
 
 See "Definitions" section below for the key for the abbreviations.
 ```
-1: M: !ordertype [order details]!ordertype [orderdetails]... (NS)
+1: M: !ordertype [order details]!ordertype [orderdetails]!tbond [proof] ... (NS)
 ```
 
 ```
@@ -167,7 +169,7 @@ Taker side auth of utxo has been REMOVED, see overview of argument [here](https:
 #### Definitions
 
 **T**: taker
-
+:
 **M**: maker
 
 __\*__ : indicates message **not including** NS is encrypted
@@ -199,5 +201,69 @@ Commitment data for default PoDLE construct:
 **ulist**: list of utxos that maker proposes to be used in transaction
 
 **(NS)**: nick signature (either of form pub, sig or from pubkey recovery, bitcoin type) : message to be signed is the whole message to be sent + message channel identifier str(`serverport`) (the latter to prevent cross-channel replay).
+
+
+Fidelity Bonds
+==========
+
+JoinMarket version 0.9 implements fidelity bonds, for a full writeup of whys and hows of the feature see [the design document](https://gist.github.com/chris-belcher/18ea0e6acdb885a2bfbdee43dcd6b5af/).
+
+Makers who have a fidelity bond will send a proof of it to takers in response to an !orderbook message along with the maker's offers.
+
+The fidelity bond proof message contains everything needed to prove to the taker that the fidelity bond UTXO is real, that it has a certain value, and that it is genuinely possessed by the maker.
+To keep the size down the fidelity bond proof message is a base64-encoded binary data blob.
+
+The binary blob is made up of concatenating various parameters (size in bytes on the line below):
+
+```
+nick_sig + cert_sig + cert_pubkey + cert_expiry + utxo_pubkey + txid + vout + timelock
+72       + 72       + 33          + 2           + 33          + 32   + 4    + 4 = 252 bytes
+```
+
+The command name "tbond" means "time locked bond".
+One day there might be a burned coins fidelity bond too, but probably not because timelocked bonds have smaller proof sizes and you can get the equivalent of a burned coin bond by using a timelock very far in the future.
+
+### UTXO data
+To prove that the UTXO exists, the proof contains the `txid` and `vout` of the UTXO, these can be used to lookup in a full node's UTXO set to check that the UTXO exists, is confirmed in the best chain and is unspent.
+The proof also contains a `utxo_pubkey` and `locktime` which together are enough to construct a redeemscript for a timelocked address.
+The UTXO set query will give the verifier information about the UTXO's scriptPubKey and allow him to verify that the UTXO is indeed a timelocked address.
+The UTXO set query will also tell the verifier how many bitcoins are locked in the address, as well as the confirmation time of the transaction.
+
+The receiver must check that the given (`txid`, `vout`) has not already been seen. A UTXO must only be used at most once for a fidelity bond in a given orderbook.
+If a UTXO does arrive at the taker a second time, the taker should just pick one (it doesnt matter which one, either way removes the incentive to announce UTXOs more than once).
+
+### Two signatures
+
+There are two signatures in the proof.
+
+Diagram of the two signatures:
+
+`Fidelity bond keypair ----signs----> certificate ----signs----> IRC nicknames`
+
+#### Certificate signature
+In order to allow holding the fidelity bond UTXOs in cold storage, there is an intermediate keypair called the certificate.
+A fidelity bond privkey can sign a certificate message and transfer the `utxo_pubkey`, `cert_pubkey`, `cert_sig` and `cert_expiry` to the online computer.
+
+The certificate message is defined as `'fidelity-bond-cert|' + cert_pubkey + '|' + cert_expiry` encoded as bytes where + denotes concatenation.
+
+The certificate expiry `cert_expiry` is the number of the 2016-block period after which the certificate is no longer valid.
+For example, if `cert_expiry` is 330 then the certificate will become invalid after block height 665280 (= 330x2016).
+The `cert_expiry` is expressed as an ascii string of numerals, for example "55" for the number 55 (in hex 0x3535 or \x35\x35).
+The purpose of the expiry parameter is so that in case the hot wallet really does get hacked, the hacker can only impersonate the fidelity bond for a limited amount of time and not forever.
+As `cert_expiry` is stored in 2 bytes in the proof, its maximum value is 65535 which corresponds to a block height of 65535x2016 = 132118560.
+
+The certificate signature `cert_sig`, which is the signature resulting from signing the certificate message with the fidelity bond bitcoin private key.
+
+#### Nick signature
+
+In order to stop reply attacks there is signature over the IRC nicknames of both the taker and maker.
+This nick message is `taker_nick + | + maker_nick` encoded as bytes, for example "J54LS6YyJPoseqFS|J55VZ6U6ZyFDNeuv".
+
+The nick signature `nick_sig` results from signing the two IRC nicknames with the certificate private key.
+
+All signatures are ecdsa signatures in the DER format, padded at the start to be exactly 72 bytes long. The header byte of the DER format is 0x30 which makes it easy to strip the padding.
+
+
+
 
 This document is not yet complete. Edit proposals welcomed.
