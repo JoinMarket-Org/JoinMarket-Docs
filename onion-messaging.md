@@ -10,7 +10,7 @@ The messages (which, as per above, are serialized, encoded json) passed between 
 
 ### MESSAGE TYPES:
 
-```
+```python
 LOCAL_CONTROL_MESSAGE_TYPES = {"connect": 785, "disconnect": 787, "connect-in": 797}
 CONTROL_MESSAGE_TYPES = {"peerlist": 789, "getpeerlist": 791,
                          "handshake": 793, "dn-handshake": 795}
@@ -46,7 +46,8 @@ act as a directory node, to any other node, as a response to the initial
 talk to each other).
 
 The syntax of `handshake` is:
-json serialized:
+
+```json
   {"app-name": "joinmarket",
    "directory": false,
    "location-string": "host:port",
@@ -54,21 +55,25 @@ json serialized:
    "features": {},
    "nick": "J5***"
   }
+```
+
 Note that `proto-ver` is the version specified as `JM_VERSION` in `jmdaemon.protocol`.
 (It has not changed for many years, it only specifies the syntax of the messages).
 The `features` field is currently empty but is provided for forwards compatibility, if directory nodes offer additional features.
 
 The syntax of `dn-handshake` is:
-json serialized:
+
+```json
  {"app-name": "joinmarket",
   "directory": true,
   "proto-ver-min": 5,
   "proto-ver-max": 5,
-  "features": {}
+  "features": {},
   "accepted": true,
   "nick": "J5**",
   "motd": "Information about directory node"
  }
+```
 
  Non-directory nodes should send `handshake` to directory nodes, upon successfully connecting, and directory nodes should return the `dn-handshake` method with `true`
  for accepted, if and only if:
@@ -102,7 +107,9 @@ will be ignored until the above two-way handshake is complete.
 
 The syntax of `peerlist` is:
 
+```
 nick || NICK_PEERLOCATOR_SEPARATOR || peer-location || "," ... (repeated)
+```
 
 i.e. a serialized list of two-element tuples, each of which is a Joinmarket nick
 followed by a peer location.
@@ -119,7 +126,7 @@ There are three messages created inside the joinmarket messaging daemon, in resp
 
 Messages are received as lines via the `OnionLineProtocol` instance for the given connection.
 The line is first deserialized into a json object, containing the fields `line` and `type` as outlined above.
-The origin of the message is defined as either inbound or outbound. If the message is a control message, the connection information (which can be host:port or the defined reachable onion location, or the string "00" for ourself) may be used to update the state of the peer. If it is a Joinmarket message then the `nick` in the line (as outlined above) is used to determine where to send the message (i.e. directory nodes broadcast to all connected non-directory peers for `PUBMSG` and forward to a specific peer for `PRIVMSG` but see below for the special behaviour in regards to `PRIVMSG` on these message channels.
+The origin of the message is defined as either inbound or outbound. If the message is a control message, the connection information (which can be host:port or the defined reachable onion location, or the string "00" for ourself) may be used to update the state of the peer. If it is a Joinmarket message then the `nick` in the line (as outlined above) is used to determine where to send the message (i.e. directory nodes broadcast to all connected non-directory peers for `PUBMSG` and forward to a specific peer for `PRIVMSG` but see below for the special behaviour in regards to `PRIVMSG` on these message channels).
 
 The resulting messages of the Joinmarket type are passed into normal message channel processing, and should be
 identical to those coming from IRC.
