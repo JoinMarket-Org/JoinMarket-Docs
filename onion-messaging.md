@@ -53,7 +53,8 @@ The syntax of `handshake` is:
    "location-string": "host:port",
    "proto-ver": 5,
    "features": {},
-   "nick": "J5***"
+   "nick": "J5***",
+   "network": "mainnet"
   }
 ```
 
@@ -71,6 +72,7 @@ The syntax of `dn-handshake` is:
   "features": {},
   "accepted": true,
   "nick": "J5**",
+  "network": "mainnet",
   "motd": "Information about directory node"
  }
 ```
@@ -81,6 +83,7 @@ The syntax of `dn-handshake` is:
  * the `directory` field of the peer is false
  * the `app-name` is the string `"joinmarket"`
  * the set of features requested is both recognized and accepted (currently: none)
+ * the `network` matches what is configured under `[BLOCKCHAIN]`, `network` in their `joinmarket.cfg`
 
  In case those conditions are met, return `"accepted": true`, else return
  `"accepted": false` and immediately disconnect the new peer.
@@ -97,6 +100,7 @@ if and only if:
 * the `directory` field of the peer is false
 * the `app-name` is `"joinmarket"`
 * the set of features is both recognized and accepted (currently: none)
+* the `network` matches what is configured under `[BLOCKCHAIN]`, `network` in their `joinmarket.cfg`
 
 otherwise the peer should be immediately disconnected.
 
