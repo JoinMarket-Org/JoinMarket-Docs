@@ -104,7 +104,7 @@ Valid conversation sequences:
 | TAKER    |      | MAKER |
 | :---------:|:----:|:-------:|
 |!orderbook(public)|>>>||
-|| <<<| ![rel\|abs]order (private)|
+|| <<<| ![rel\|abs]offer (private)|
 || <<<| !tbond (private)|
 
 | TAKER    |      | MAKER |
